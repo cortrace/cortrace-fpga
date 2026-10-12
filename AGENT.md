@@ -5,9 +5,11 @@ Artix-7 FPGA capture of a Cortex-M parallel ETM trace port, streamed over UDP
 to the host, decoded by cortrace. See README.md and docs/00-migration-plan.md.
 
 ## Hardware / environment
-- **FPGA**: A7-Lite, `xc7a35tfgg484-2`. Program via FT232H (`0403:6014`):
-  `openFPGALoader -c ft232 --fpga-part xc7a35tfgg484 <bit>` (SRAM, volatile;
-  add `-f` to write QSPI flash so it survives power-off).
+- **FPGA**: A7-Lite, `xc7a35tfgg484-2`. Program via FT232H (`0403:6014`) with
+  `host/scripts/fpga_flash.sh <bit>`: it writes the QSPI flash (survives power-off),
+  verifies it, reloads the FPGA from the flash and prints the design version it
+  reports. `--sram` loads into SRAM only (volatile), to try a design. It wraps
+  `openFPGALoader -c ft232 --fpga-part xc7a35tfgg484 [-f --verify] <bit>`.
 - **FPGA IP = `<FPGA_IP>`** (fixed in the bitstream; see `DEFAULT_FPGA_IP` in
   cortrace's `python/cortrace/fpga/net.py`). It answers ARP only, no ICMP — normal.
 - **Trace NIC** (direct-attached, `<nic>`) MUST hold **`<HOST_IP>`** (the
