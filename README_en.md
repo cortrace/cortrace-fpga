@@ -3,7 +3,7 @@
 [简体中文](README.md) | **English**
 
 An Artix-7 FPGA appliance that captures a Cortex-M **parallel ETM trace** port
-and streams it over gigabit UDP for [cortrace](https://github.com/FASTSHIFT/cortrace) to decode.
+and streams it over gigabit UDP for [cortrace](https://github.com/cortrace/cortrace) to decode.
 
 ```mermaid
 flowchart TD
@@ -43,7 +43,7 @@ stack, SysTick exceptions rendered) across BB=0/1 and SysTick on/off.
 | `rtl/ddr3/ip/` | Xilinx MIG DDR3 + clocking wizard IP (`.xci`, Vivado 2021.1) |
 | `rtl/external/verilog-ethernet` | Alex Forencich MAC/UDP/IP/ARP + AXIS (submodule) |
 | `fpga_flow/` | Vivado build TCL (`build_trace_stream.tcl`) |
-| capture / CSR control / decode / align / fuse | Not in this repo: provided by the [cortrace](https://github.com/FASTSHIFT/cortrace) .deb (`cortrace`, `cortrace-grab`, `cortrace-decode`) |
+| capture / CSR control / decode / align / fuse | Not in this repo: provided by the [cortrace](https://github.com/cortrace/cortrace) .deb (`cortrace`, `cortrace-grab`, `cortrace-decode`) |
 | `host/scripts/` | Small board-debug tools: PRBS/e2e soak, golden cross-check, probe captures (need the cortrace package installed) |
 | `host/target/` | OpenOCD configs for the STM32H743 target |
 | `sim/` | Icarus Verilog manifest regression (`run_verilog_tests.py`) |
@@ -77,8 +77,8 @@ cd host/scripts && python3 -m pytest test_commit_msg_hook.py   # commit-msg hook
 
 ## Related repos
 
-- [**cortrace**](https://github.com/FASTSHIFT/cortrace) — ETMv4 decoder (OpenCSD) + call-stack + Perfetto exporter
-- [**stm32h743-etm-trace-firmware**](https://github.com/FASTSHIFT/stm32h743-etm-trace-firmware) — deterministic selftrace target firmware
+- [**cortrace**](https://github.com/cortrace/cortrace) — ETMv4 decoder (OpenCSD) + call-stack + Perfetto exporter
+- [**stm32h743-etm-trace-firmware**](https://github.com/cortrace/stm32h743-etm-trace-firmware) — deterministic selftrace target firmware
 
 ## License
 

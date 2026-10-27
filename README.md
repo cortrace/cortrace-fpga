@@ -3,7 +3,7 @@
 **简体中文** | [English](README_en.md)
 
 一个基于 Artix-7 FPGA 的采集设备，用于抓取 Cortex-M 的**并口 ETM trace**，
-并通过千兆 UDP 把原始字节流送给 [cortrace](https://github.com/FASTSHIFT/cortrace) 解码。
+并通过千兆 UDP 把原始字节流送给 [cortrace](https://github.com/cortrace/cortrace) 解码。
 
 ```mermaid
 flowchart TD
@@ -42,7 +42,7 @@ flowchart TD
 | `rtl/ddr3/ip/` | Xilinx MIG DDR3 + 时钟向导 IP（`.xci`，Vivado 2021.1） |
 | `rtl/external/verilog-ethernet` | Alex Forencich 的 MAC/UDP/IP/ARP + AXIS（子模块） |
 | `fpga_flow/` | Vivado 构建 TCL（`build_trace_stream.tcl`） |
-| 采集 / CSR 控制 / 解码 / 对齐 / 融合 | 不在本仓库：由 [cortrace](https://github.com/FASTSHIFT/cortrace) 的 deb 包提供（`cortrace`、`cortrace-grab`、`cortrace-decode`） |
+| 采集 / CSR 控制 / 解码 / 对齐 / 融合 | 不在本仓库：由 [cortrace](https://github.com/cortrace/cortrace) 的 deb 包提供（`cortrace`、`cortrace-grab`、`cortrace-decode`） |
 | `host/scripts/` | 板级调试小工具：PRBS/端到端压测、golden 对拍、探针采集（依赖已安装的 cortrace 包） |
 | `host/target/` | STM32H743 目标板的 OpenOCD 配置 |
 | `sim/` | Icarus Verilog manifest 回归（`run_verilog_tests.py`） |
@@ -76,8 +76,8 @@ cd host/scripts && python3 -m pytest test_commit_msg_hook.py   # 提交信息 ho
 
 ## 相关仓库
 
-- [**cortrace**](https://github.com/FASTSHIFT/cortrace) — ETMv4 解码器（OpenCSD）+ 调用栈 + Perfetto 导出
-- [**stm32h743-etm-trace-firmware**](https://github.com/FASTSHIFT/stm32h743-etm-trace-firmware) — 确定性 selftrace 目标板固件
+- [**cortrace**](https://github.com/cortrace/cortrace) — ETMv4 解码器（OpenCSD）+ 调用栈 + Perfetto 导出
+- [**stm32h743-etm-trace-firmware**](https://github.com/cortrace/stm32h743-etm-trace-firmware) — 确定性 selftrace 目标板固件
 
 ## 许可证
 
