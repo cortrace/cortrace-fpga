@@ -7,7 +7,7 @@
 
 ```mermaid
 flowchart TD
-    ETM["STM32H743 ETM 4-bit"] --> CAP["trace_capture_a7<br/>IDDR 边沿采样，无 IDELAY"]
+    ETM["STM32H743 ETM 4-bit"] --> CAP["trace_capture_a7<br/>IDELAY（运行时可调）+ IDDR 边沿采样"]
     CAP --> WR["la_ddr_writer<br/>乒乓打包 128b"]
     WR --> RING["DDR3 环形缓冲 16 MB"]
     RING --> STR["la_ddr_ring_streamer<br/>位宽转换 128b→8b"]

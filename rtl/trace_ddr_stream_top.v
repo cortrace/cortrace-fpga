@@ -21,7 +21,9 @@
 //     0x0B bit as ddr_ring_selftest_top, so S1b results transfer directly
 //
 // Config CSRs (:5002, same map as trace_stream_top for tool reuse):
-//   0x05-0x07  (removed) were IDELAY tap tuning; the front-end has no IDELAY
+//   0x05  IDELAY tap of all four data lanes (0..31, 78 ps each; power-on 16)
+//   0x06  IDELAY tap of one lane: {lane[6:5], tap[4:0]}
+//   0x07  (unused) there is no clock-lane delay
 //   0x08  TPIU port width (4/2/1)
 //   0x09  1 -> use FPGA-side ramp source (selftest, bypass trace pins)
 //   0x0A  1 -> pause stream (for :5001 CSR readback while stream is running)
@@ -51,10 +53,9 @@
 `default_nettype none
 
 module trace_ddr_stream_top #(
-    // No IDELAY: IBUF->IDDR samples the centre-aligned data on the TRACECLK
-    // edge directly (see trace_capture_a7). The former TAP/USE_IDELAY/
-    // CAP_IDELAY_FIXED* knobs are gone -- the delay element was harmful, not
-    // needed (doc 30: tap=0 gave 0% bad A-sync at 112 MHz, tap=24 gave 79%).
+    // The data lanes go through a run-time tunable IDELAY (CSR 0x05/0x06, see
+    // trace_capture_a7); IDLY_INIT is the power-on tap.
+    parameter [4:0] IDLY_INIT   = 5'd16,
     parameter       TRACE_WIDTH = 4,            // power-on TPIU width (4/2/1)
     parameter [31:0] DEST_IP        = {8'd192, 8'd168, 8'd10, 8'd245},
     parameter [15:0] DEST_PORT      = 16'd5555,
@@ -203,8 +204,7 @@ module trace_ddr_stream_top #(
     reg         iddr_prbs_125 = 0;   // 0x0D (trace_clk PRBS into the CDC FIFO,
                                      //       stresses IDDR->CDC->DDR->UDP path)
 
-    // IDELAY tap CSRs (0x05/0x06/0x07) are gone: the capture front-end has no
-    // delay element (IBUF->IDDR direct), so there is nothing to tune.
+    reg  [19:0] idly_tap_125 = {4{IDLY_INIT}};  // 0x05/0x06 (IDELAY tap per data lane)
     reg         dbg_clr_125 = 0;     // 0x10 (one-cycle pulse into dbg_regfile.clr)
     always @(posedge clk125) begin
         dbg_clr_125 <= 1'b0;
@@ -213,6 +213,8 @@ module trace_ddr_stream_top #(
             diag_clr_125 <= 0; iddr_prbs_125 <= 0;
         end else if (csr_we_w) case (csr_addr_w)
             8'h10: dbg_clr_125 <= 1'b1;
+            8'h05: idly_tap_125 <= {4{csr_data_w[4:0]}};
+            8'h06: idly_tap_125[5*csr_data_w[6:5] +: 5] <= csr_data_w[4:0];
             8'h08: width_csr      <= (csr_data_w == 8'd2) ? 2'd1 :
                                      (csr_data_w == 8'd1) ? 2'd2 : 2'd0;
             8'h09: selftest_csr   <= csr_data_w[0];
@@ -229,13 +231,15 @@ module trace_ddr_stream_top #(
     wire        cap_valid;
 
     trace_capture_a7 #(
-        .CLK_BUF   ("BUFR_IO")
+        .CLK_BUF   ("BUFR_IO"),
+        .IDLY_INIT (IDLY_INIT)
     ) u_capture (
         .rst          (rst200),
         .ref_200m     (clk200),
         .trace_clk_p  (trace_clk_in),
         .trace_data_p (trace_data_in),
         .test_src_en  (iddr_prbs_125),   // synced to trace_clk inside
+        .idly_tap     (idly_tap_125),    // synced to clk200 inside
         .trace_clk    (),
         .trace_a      (),
         .trace_b      (),
@@ -507,7 +511,8 @@ module trace_ddr_stream_top #(
     //   bit2  stream self-test sources (CSR 0x09 ramp, CSR 0x0B fixed byte)
     //   bit3  run-time TPIU port width select (CSR 0x08)
     //   bit4  CSR 0x10 clears the sticky error and counters
-    localparam [7:0] FEATURES = 8'b0001_1110;
+    //   bit5  run-time IDELAY tap of the data lanes (CSR 0x05 / 0x06)
+    localparam [7:0] FEATURES = 8'b0011_1110;
     // ============ Readout page mux (:5001) ============
     wire dbg_page  = (ext_addr[15:8] == 8'hFF) &&
                      (ext_addr[7:4] >= 4'h1) && (ext_addr[7:4] <= 4'h4);

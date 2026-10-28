@@ -6,16 +6,20 @@
 // Replaces ECP5's IDDRX1F used in orbtrace's `glue.py` with the equivalent
 // 7-series primitive:  IBUF -> IDDR (DDR_CLK_EDGE=SAME_EDGE_PIPELINED).
 //
-// NO IDELAY. The STM32 TPIU drives the parallel port CENTRE-ALIGNED (data is
-// stable AROUND the TRACECLK edge, confirmed on the LA), so the IDDR samples
-// the eye centre by sampling on the edge directly -- exactly like the upstream
-// litex DDRInput. An earlier port added a FIXED IDELAY tap to "fix" an IDDR
-// input-hold STA violation, but on-board that tap only pushed the (already
-// centred) data OUT of the eye: at 112 MHz pin, tap=24 gave 79% bad A-sync
-// while tap=0 gave 0%. So the delay element was not just unnecessary but
-// harmful; it is removed. Sampling phase is frequency-independent, so ONE
-// bitstream covers every TRACECLK the board's SI supports (~<=56 MHz pin
-// clean; 112 MHz is board-SI-limited, not a capture-logic limit).
+// IDELAY on the data lanes, tunable at run time. The STM32 TPIU drives the
+// parallel port CENTRE-ALIGNED (data is stable around the TRACECLK edge), but
+// the TRACECLK reaches the IDDR C pins ~3.3 ns after the pin (IBUF + BUFIO) while
+// the data only sees the IBUF (~1.3 ns), so the IDDR samples the data ~2 ns
+// late. With IBUF->IDDR direct that was fine up to ~56 MHz pin clock and
+// failed from 75 MHz: Vivado reports it as a ~-1.2 ns hold violation on the
+// four data inputs. Each lane therefore goes through an IDELAYE2 (VAR_LOAD,
+// 78 ps per tap at the 200 MHz reference); the tap is a CSR (see
+// trace_ddr_stream_top) and comes up at IDLY_INIT.
+// Measured on the H743 rig (4-bit port, 5 s captures decoded with cortrace):
+// 56 MHz is clean on every tap, 75 MHz is clean for taps 12..30, 83 MHz for
+// 12..22; 90 MHz and above has no fully clean tap (see AGENT.md).
+// (An earlier, different front end saw a fixed tap=24 make 112 MHz worse; that
+// is consistent with the narrow eye at 112 MHz, it is not a general rule.)
 //
 // Output stream is the same {trace_a, trace_b} pair (rising-edge nibble and
 // falling-edge nibble) that traceIF.v already consumes, plus the packed
@@ -44,7 +48,10 @@ module trace_capture_a7 #(
     //   "BUFR_IO"  : BUFIO drives the IDDR bit-clock + BUFR drives the fabric
     //                clock. Region-local, tighter source-sync window between
     //                TRACECLK and the IDDR C pins — the shipped choice.
-    parameter CLK_BUF = "BUFG"
+    parameter CLK_BUF = "BUFG",
+    // Power-on IDELAY tap of every data lane (0..31, 78 ps each). 16 sits in
+    // the clean range from 56 to 83 MHz and is the best single value at 90 MHz.
+    parameter [4:0] IDLY_INIT = 5'd16
 ) (
     input  wire        rst,
     input  wire        ref_200m,
@@ -59,6 +66,9 @@ module trace_capture_a7 #(
     // path with a violently-changing, host-reproducible pattern so a byte
     // drop/dup shows up as a PRBS break. Synced to trace_clk inside (g_iddr).
     input  wire        test_src_en,
+    // IDELAY tap per data lane, lane k in [5k+4:5k]. Quasi-static, any clock
+    // domain: it is re-synchronised into ref_200m here.
+    input  wire [19:0] idly_tap,
 
     // Captured outputs to traceIF
     output wire        trace_clk,
@@ -96,15 +106,68 @@ module trace_capture_a7 #(
     endgenerate
 
     // ------------------------------------------------------------------
-    // Per-lane input path: IBUF straight to IDDR (no delay element). The
-    // centre-aligned STM32 data is sampled at the eye centre by clocking IDDR
-    // on the TRACECLK edge.
+    // Per-lane input path: IBUF -> IDELAYE2 -> IDDR. The delay moves the
+    // data eye onto the late IDDR clock (see the header). The IDELAYCTRL needs
+    // a reset after ref_200m is stable; rst (clk200 domain, released after the
+    // sys MMCM locks) does that.
     // ------------------------------------------------------------------
     wire [3:0] data_ibuf;
+    wire [3:0] data_dly;
+    wire idly_rdy;
+    reg  idly_rdy_s = 1'b0;
+    (* IODELAY_GROUP = "trace_idly" *)
+    IDELAYCTRL u_idlyctrl (.RDY(idly_rdy), .REFCLK(ref_200m), .RST(rst));
+    always @(posedge ref_200m) idly_rdy_s <= idly_rdy;
     genvar i;
     generate
         for (i = 0; i < 4; i = i + 1) begin : g_lane
+            // tap CSR -> ref_200m: a new value is loaded once it has been the
+            // same for two cycles (the tap is a 5-bit bus, not a single bit).
+            // A VAR_LOAD IDELAYE2 does NOT come up at IDELAY_VALUE (measured:
+            // the power-on 75 MHz capture was as bad as tap 0 until a tap was
+            // written), so while the IDELAYCTRL is not ready tap_cur is parked
+            // on a value that differs from the CSR, which forces one load of
+            // the CSR value as soon as it is ready.
+            reg [4:0] tap_s1 = IDLY_INIT, tap_s2 = IDLY_INIT, tap_s3 = IDLY_INIT;
+            reg [4:0] tap_cur = ~IDLY_INIT;
+            reg       tap_ld = 1'b0;
+            always @(posedge ref_200m) begin
+                tap_s1 <= idly_tap[5*i +: 5];
+                tap_s2 <= tap_s1;
+                tap_s3 <= tap_s2;
+                tap_ld <= 1'b0;
+                if (!idly_rdy_s) begin
+                    tap_cur <= ~tap_s3;
+                end else if (tap_s2 == tap_s3 && tap_s3 != tap_cur) begin
+                    tap_cur <= tap_s3;
+                    tap_ld  <= 1'b1;
+                end
+            end
             IBUF u_ibuf (.I(trace_data_p[i]), .O(data_ibuf[i]));
+            (* IODELAY_GROUP = "trace_idly" *)
+            IDELAYE2 #(
+                .IDELAY_TYPE          ("VAR_LOAD"),
+                .DELAY_SRC            ("IDATAIN"),
+                .IDELAY_VALUE         (IDLY_INIT),
+                .HIGH_PERFORMANCE_MODE("TRUE"),
+                .SIGNAL_PATTERN       ("DATA"),
+                .REFCLK_FREQUENCY     (200.0),
+                .CINVCTRL_SEL         ("FALSE"),
+                .PIPE_SEL             ("FALSE")
+            ) u_idly (
+                .C           (ref_200m),
+                .REGRST      (1'b0),
+                .LD          (tap_ld),
+                .CE          (1'b0),
+                .INC         (1'b0),
+                .CINVCTRL    (1'b0),
+                .CNTVALUEIN  (tap_cur),
+                .IDATAIN     (data_ibuf[i]),
+                .DATAIN      (1'b0),
+                .LDPIPEEN    (1'b0),
+                .DATAOUT     (data_dly[i]),
+                .CNTVALUEOUT ()
+            );
         end
     endgenerate
 
@@ -127,7 +190,7 @@ module trace_capture_a7 #(
                 .Q2 (iddr_b[j]),  // falling-edge sample
                 .C  (trace_clk_io), // BUFIO (BUFR_IO) or BUFG net
                 .CE (1'b1),
-                .D  (data_ibuf[j]),
+                .D  (data_dly[j]),
                 .R  (rst),
                 .S  (1'b0)
             );

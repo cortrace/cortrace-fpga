@@ -54,7 +54,7 @@ module tb_iddr_gap;
     trace_capture_a7 #(.CLK_BUF("BUFR_IO")) dut (
         .rst(1'b0), .ref_200m(ref_200m),
         .trace_clk_p(trace_clk), .trace_data_p(tdata),
-        .test_src_en(1'b0),
+        .test_src_en(1'b0), .idly_tap({4{5'd16}}),
         .trace_clk(trace_clk_o), .trace_a(ta), .trace_b(tb),
         .cap_byte(cap_byte), .cap_valid(cap_valid)
     );

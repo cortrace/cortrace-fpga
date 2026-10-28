@@ -61,7 +61,25 @@ cortrace `fpga/health.py` together.
 
 ## Key finding baked into the design
 The STM32 TPIU drives the parallel port **centre-aligned** (data stable around
-the TRACECLK edge, LA-confirmed), so the capture is plain IBUF→IDDR edge
-sampling with **no IDELAY** — frequency-independent, one bitstream for any
-TRACECLK the board SI supports (<=56 MHz pin clean; 112 MHz is board-SI-limited,
-not a capture-logic limit). Do not re-introduce IDELAY taps.
+the TRACECLK edge, LA-confirmed). TRACECLK reaches the IDDR C pins ~3.3 ns after
+the pin (IBUF + BUFIO) while the data only sees the IBUF (~1.3 ns), so a bare
+IBUF→IDDR samples ~2 ns late: Vivado's ~-1.2 ns hold violation on the four data
+inputs was real. That was invisible up to ~56 MHz pin clock and broke 75 MHz.
+Each data lane therefore has an **IDELAYE2 (VAR_LOAD, 78 ps/tap)** tuned at run
+time: CSR 0x05 sets all lanes, CSR 0x06 one lane (`{lane[6:5], tap[4:0]}`), power-on
+tap 16 (`cortrace fpga ctrl set-tap`). Measured on the H743 rig (4-bit, 5 s
+captures decoded with cortrace, `lost-sync` and usable ETM bytes):
+
+| TRACECLK pin | clean taps |
+|---|---|
+| 56.25 MHz | all (0..28 tried) |
+| 75 MHz | 12..30 |
+| 83 MHz | 12..22 |
+| 90 MHz and up | none (best: 89.6 MHz tap 12, still ~90 lost-sync per 3 MB) |
+
+Tap 16 is inside the clean range from 56 to 83 MHz. Above that the eye is too
+narrow for one tap for all lanes; per-lane taps (CSR 0x06) are the next thing
+to try. STA cannot judge the tap: the XDC models a 2.4 ns eye (`-min 1.2 -max
+4.8`, a lower bound from the 56 MHz sweep) and closes with tap 16; the tap is
+re-tuned against the real decode, not against STA. Do not remove the IDELAY: a
+direct IBUF→IDDR front end is what failed at 75 MHz.

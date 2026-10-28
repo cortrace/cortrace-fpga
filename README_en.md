@@ -7,7 +7,7 @@ and streams it over gigabit UDP for [cortrace](https://github.com/cortrace/cortr
 
 ```mermaid
 flowchart TD
-    ETM["STM32H743 ETM 4-bit"] --> CAP["trace_capture_a7<br/>IDDR edge sample, no IDELAY"]
+    ETM["STM32H743 ETM 4-bit"] --> CAP["trace_capture_a7<br/>run-time tunable IDELAY + IDDR edge sample"]
     CAP --> WR["la_ddr_writer<br/>ping-pong pack 128b"]
     WR --> RING["DDR3 ring 16 MB"]
     RING --> STR["la_ddr_ring_streamer<br/>gearbox 128b→8b"]

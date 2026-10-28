@@ -138,7 +138,8 @@ set_false_path -from [get_pins rst_sync_reg[3]/C] \
 # CSR bits (clk125) into their clk200 first-stage synchroniser registers are
 # quasi-static 2-FF crossings -- exclude the metastability-catcher stage.
 set_false_path -to [get_cells -hier -filter {NAME =~ *selftest_s0_reg* || \
-                                              NAME =~ *src_fixed_s0_reg*}]
+                                              NAME =~ *src_fixed_s0_reg* || \
+                                              NAME =~ *tap_s1_reg*}]
 
 opt_design
 place_design

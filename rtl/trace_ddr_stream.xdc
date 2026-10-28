@@ -44,13 +44,20 @@ set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets -of_objects [get_pins u_captu
 # sampling edge). Model a symmetric valid window around both clock edges.
 # Half-UI @ the constrained 12 ns period = 6 ns; with ~3 ns edges the stable
 # eye is ~±2.5 ns about the clock edge. Use max/min delays that describe a
-# data-valid window of [1.0, 5.0] ns after the launching clock edge for both
-# rising and falling (DDR), i.e. sample point near the eye centre.
+# data-valid window of [1.2, 4.8] ns after the launching clock edge for both
+# rising and falling (DDR), i.e. a 2.4 ns eye centred on the next edge.
+# 2.4 ns is what the board shows at the shipped 56.25 MHz pin clock: every
+# IDELAY tap 0..28 (2.2 ns of sweep) decodes clean, so the eye is wider than
+# that plus the IDDR aperture. It is a lower bound for that frequency, not a
+# datasheet value. The eye is narrower above ~75 MHz (see AGENT.md); there the
+# run-time tap (CSR 0x05/0x06) is what has to be tuned, STA cannot judge it.
+# The IDELAY tap IDLY_INIT (16) is the value STA closes with: at 4.8/1.2 the
+# worst setup/hold slack is ~+0.05/+0.03 ns.
 set _td [get_ports {trace_data_in[*]}]
-set_input_delay -clock trace_clk_in -max 5.0 $_td
-set_input_delay -clock trace_clk_in -min 1.0 $_td
-set_input_delay -clock trace_clk_in -max 5.0 $_td -clock_fall -add_delay
-set_input_delay -clock trace_clk_in -min 1.0 $_td -clock_fall -add_delay
+set_input_delay -clock trace_clk_in -max 4.8 $_td
+set_input_delay -clock trace_clk_in -min 1.2 $_td
+set_input_delay -clock trace_clk_in -max 4.8 $_td -clock_fall -add_delay
+set_input_delay -clock trace_clk_in -min 1.2 $_td -clock_fall -add_delay
 
 # ---- RGMII (RTL8211E), BANK 15 ----
 set_property PACKAGE_PIN K18 [get_ports phy_rx_clk]
