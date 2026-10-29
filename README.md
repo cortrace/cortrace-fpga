@@ -12,30 +12,10 @@
 一个基于 Artix-7 FPGA 的采集设备，用于抓取 Cortex-M 的**并口 ETM trace**，
 并通过千兆 UDP 把原始字节流送给 [cortrace](https://github.com/cortrace/cortrace) 解码。
 
-```mermaid
-flowchart TD
-    ETM["STM32H743 ETM 4-bit"] --> CAP["trace_capture_a7<br/>IDELAY（运行时可调）+ IDDR 边沿采样"]
-    CAP --> WR["la_ddr_writer<br/>乒乓打包 128b"]
-    WR --> RING["DDR3 环形缓冲 16 MB"]
-    RING --> STR["la_ddr_ring_streamer<br/>位宽转换 128b→8b"]
-    STR --> NET["打包器 + fpga_core_net"]
-    NET -->|"UDP :5555"| GRAB["stream_grab"]
-    GRAB --> DEFRAME["deframe"]
-    DEFRAME --> CORTRACE["cortrace 解码"]
-
-    subgraph FPGA["FPGA（Artix-7）"]
-        CAP
-        WR
-        RING
-        STR
-        NET
-    end
-    subgraph HOST["主机"]
-        GRAB
-        DEFRAME
-        CORTRACE
-    end
-```
+<p align="center">
+  <img src="docs/assets/architecture-zh.svg" width="100%"
+       alt="数据通路：STM32H743 的 4 位 trace 口 → trace_capture_a7（IDELAY + IDDR 采样）→ la_ddr_writer → DDR3 16 MB 环形缓冲 → la_ddr_ring_streamer → fpga_core_net → UDP :5555 → PC 上的 cortrace 接收、去帧、OpenCSD 解码 → Perfetto 时间线 / 代码覆盖率">
+</p>
 
 采集链路做到字节级无损：经过帧化 PRBS 压测（6.75 GB / 82.3 万块，0 字节错误）
 以及真实 ETM trace 过 cortrace 的端到端压测（37.8 MB，0 fatal、0 丢弃调用、

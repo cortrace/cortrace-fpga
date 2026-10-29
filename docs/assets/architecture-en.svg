@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 590" width="1080" height="590" role="img" aria-labelledby="t d">
+  <title id="t">cortrace-fpga data path</title>
+  <desc id="d">trace_capture_a7 → la_ddr_writer → MIG DDR3 → la_ddr_ring_streamer → fpga_core_net → UDP :5555 → cortrace</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1080" y2="590" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0B1020"/><stop offset="1" stop-color="#18264A"/></linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#22D3EE"/></marker>
+    <marker id="u" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FBBF24"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3B82F6"/></marker>
+  </defs>
+  <rect width="1080" height="590" rx="20" fill="url(#bg)"/>
+  <rect x="14" y="160" width="1052" height="156" rx="16" fill="#0F1830" stroke="#22D3EE" stroke-opacity="0.55" stroke-width="1.5"/>
+  <rect x="14" y="388" width="1052" height="140" rx="16" fill="#0F1830" stroke="#3B82F6" stroke-opacity="0.6" stroke-width="1.5"/>
+  <text x="1048" y="34" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#7E8DAD" text-anchor="end">cortrace-fpga data path</text>
+  <rect x="36" y="54" width="330" height="64" rx="12" fill="#131E3B" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="52" y="80" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Target · STM32H743 (Cortex-M7)</text>
+  <text x="52" y="102" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">ETM · DWT · ITM → TPIU, 4-bit port</text>
+  <line x1="126" y1="118" x2="126" y2="190" stroke="#22D3EE" stroke-width="4" stroke-linecap="round" marker-end="url(#a)"/>
+  <text x="140" y="153" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">TRACECLK + TRACED[3:0]</text>
+  <text x="1044" y="184" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" fill="#22D3EE" font-weight="600" text-anchor="end">FPGA · Artix-7 XC7A35T (A7-Lite)</text>
+  <rect x="36" y="196" width="180" height="104" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="50" y="221" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Sample</text>
+  <text x="50" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">trace_capture_a7</text>
+  <text x="50" y="264" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">IDELAY + IDDR</text>
+  <text x="50" y="284" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#7E8DAD">4 bit → 1 byte/clock</text>
+  <rect x="240" y="196" width="180" height="104" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="254" y="221" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Write</text>
+  <text x="254" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">la_ddr_writer</text>
+  <text x="254" y="264" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">clock crossing, pack</text>
+  <text x="254" y="284" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#7E8DAD">8 bit → 128 bit</text>
+  <line x1="219" y1="248" x2="235" y2="248" stroke="#22D3EE" stroke-width="3" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="444" y="196" width="180" height="104" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="458" y="221" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Buffer</text>
+  <text x="458" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">MIG DDR3</text>
+  <text x="458" y="264" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">16 MB ring</text>
+  <text x="458" y="284" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#7E8DAD">absorbs bursts, jitter</text>
+  <line x1="423" y1="248" x2="439" y2="248" stroke="#22D3EE" stroke-width="3" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="648" y="196" width="180" height="104" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="662" y="221" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Read</text>
+  <text x="662" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">la_ddr_ring_streamer</text>
+  <text x="662" y="264" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">at network pace</text>
+  <text x="662" y="284" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#7E8DAD">128 bit → 8 bit</text>
+  <line x1="627" y1="248" x2="643" y2="248" stroke="#22D3EE" stroke-width="3" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="852" y="196" width="180" height="104" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="866" y="221" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Send</text>
+  <text x="866" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">fpga_core_net</text>
+  <text x="866" y="264" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">UDP/IP + gigabit MAC</text>
+  <text x="866" y="284" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#7E8DAD">RGMII → RTL8211E</text>
+  <line x1="831" y1="248" x2="847" y2="248" stroke="#22D3EE" stroke-width="3" stroke-linecap="round" marker-end="url(#a)"/>
+  <path d="M942 300 V352 H176 V417" fill="none" stroke="#FBBF24" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#u)"/>
+  <text x="559" y="343" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#FBBF24" text-anchor="middle">UDP :5555 · gigabit Ethernet · 1024 B of trace + 4 B sequence number per packet</text>
+  <line x1="1004" y1="385" x2="1004" y2="305" stroke="#3B82F6" stroke-width="2" stroke-dasharray="5 5" marker-start="url(#b)" marker-end="url(#b)"/>
+  <text x="1044" y="412" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" fill="#3B82F6" font-weight="600" text-anchor="end">PC · cortrace</text>
+  <rect x="36" y="424" width="280" height="88" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="50" y="449" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Receive</text>
+  <text x="50" y="471" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">cortrace-grab · cortrace-cov</text>
+  <text x="50" y="494" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">frame numbers show losses</text>
+  <rect x="356" y="424" width="284" height="88" rx="12" fill="#131E3B" stroke="#2A3B66" stroke-width="1.5"/>
+  <text x="370" y="449" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" fill="#E6EDF3" font-weight="600">Decode</text>
+  <text x="370" y="471" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.5" fill="#22D3EE">cortrace-decode · cortrace-cov</text>
+  <text x="370" y="494" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" fill="#A7B4CF">deframe → OpenCSD ETMv4</text>
+  <line x1="319" y1="468" x2="351" y2="468" stroke="#22D3EE" stroke-width="3" stroke-linecap="round" marker-end="url(#a)"/>
+  <rect x="680" y="424" width="364" height="40" rx="10" fill="#131E3B" stroke="#22D3EE" stroke-width="1.5"/>
+  <text x="694" y="449" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#E6EDF3" font-weight="600">Perfetto timeline</text>
+  <text x="1030" y="449" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#A7B4CF" text-anchor="end">call stacks · IRQs · threads</text>
+  <rect x="680" y="472" width="364" height="40" rx="10" fill="#131E3B" stroke="#22D3EE" stroke-width="1.5"/>
+  <text x="694" y="497" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="14" fill="#E6EDF3" font-weight="600">Code coverage</text>
+  <text x="1030" y="497" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#A7B4CF" text-anchor="end">text · JSON · lcov · Cobertura</text>
+  <path d="M643 468 H660 V444 H675" fill="none" stroke="#22D3EE" stroke-width="3" stroke-linejoin="round" marker-end="url(#a)"/>
+  <path d="M643 468 H660 V492 H675" fill="none" stroke="#22D3EE" stroke-width="3" stroke-linejoin="round" marker-end="url(#a)"/>
+  <line x1="20" y1="558" x2="46" y2="558" stroke="#3B82F6" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="56" y="562" font-family="-apple-system, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12" fill="#7E8DAD">control and readout: UDP :5002 writes CSRs (port width, IDELAY tap, re-arm), :5001 reads the health registers (cortrace fpga ctrl / health)</text>
+</svg>
