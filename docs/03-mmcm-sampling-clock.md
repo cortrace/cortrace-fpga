@@ -85,6 +85,23 @@ RAM 镜像（`make RAM=1`），coverage 档：
 - 两个排线版本用的目标镜像不同（飞线时是 XIP，33 Ω 时 XIP 镜像因板子掉进 ROM 而改成 RAM
   镜像），ETM 流量不同，这里没有隔离这个变量。
 - 步长随 VCO 变化（M=14）：44 MHz 约 29 ps，52.8 MHz 约 24 ps，66 MHz 约 19 ps。
+### STM32H743 回归（MMCM 比特流 M=14 对默认比特流）
+H743 跑 cachecliff 固件（`make CACHECLIFF=1`，`-DPLL_R_OVR` 和 `-DPLL_N_OVR` 改引脚时钟），
+数据与时钟中心对齐。FPGA 是 SRAM 里的 MMCM 比特流，coverage 档，每点 0.05 s：
+| 引脚时钟 | MMCM 相位（步）干净 |
+|---|---|
+| 56.25 MHz | -150 到 +100 |
+| 75 MHz | -200 到 0（窗口中心约 -100，相位 0 在边缘） |
+| 83.3 MHz | +50 到 +225 |
+窗口都比 IDELAY 宽，但中心位置随频率变，要按频率扫相位，不能固定写 0。
+**timing 档不如默认比特流**：83.3 MHz、timing 档、抓 0.3 s：
+- 默认比特流（v1.1.0，IDELAY tap 15）：解出 322532 个 slice，`lost-sync=0`，`addr-nacc=0`，干净。
+  coverage 档 tap 6 到 27 都干净。
+- MMCM 比特流，相位 +140：四次里两次 `addr-nacc` 95 和 128、`lost-sync` 1147 和 2269，
+  另外两次没有事件；相位 +100、+125 也没有事件。
+同一个相位在 coverage 档干净，在 timing 档不干净。原因我没有查清（timing 档的数据量约
+是 coverage 档的 4 倍，且带时间戳）。56 和 75 MHz 的 timing 档没有对比。
+所以现阶段：H743 继续用默认比特流，MMCM 比特流给 RT1176。
 ## 6. 限制
 - 一个比特流只覆盖一个频率范围（M=14：42.9 到 85.7 MHz）。DRP 动态改倍频不能和精细移相同时
   用（XAPP888 的参考设计不支持开了精细移相的输出）。低于 42.9 MHz 时请用默认比特流，
