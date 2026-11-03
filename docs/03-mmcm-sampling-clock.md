@@ -59,6 +59,30 @@ cortrace fpga health                               # 显示锁定、相位和失
 ```
 目标改了 TRACECLK 频率以后，MMCM 可能失锁，也可能没有失锁但相位关系变了，所以改频率后
 先 `relock`，再重新扫相位。
+## 4b. 双模比特流（`TRACE_USE_MMCM=2`）
+一个比特流里同时带"TRACECLK 直采"和"MMCM"两种采样时钟，用 CSR 0x17 在运行时选：
+```bash
+TRACE_USE_MMCM=2 TRACE_MMCM_CLKIN_NS=12.0 OUTBIT=trace_ddr_stream_dual.bit \
+  vivado -mode batch -source ../fpga_flow/build_trace_stream.tcl
+cortrace fpga ctrl set-mode direct     # 上电默认；用 set-tap 调
+cortrace fpga ctrl set-mode mmcm       # 用 set-phase 调
+```
+- 两种时钟经 `BUFGMUX_CTRL` 无毛刺切换，IDDR 和后级 FIFO 只有一份。
+- **直采路径不再是 BUFIO，而是全局缓冲**（BUFIO 不能参与时钟复用）。插入延迟变大，最佳 IDELAY tap
+  向大数字移动：H743 在 56 MHz 所有 tap 都干净，75 MHz 要 tap 18 以上（0 到 15 有错误），
+  默认的 16 在 75 MHz 不够。双模比特流的上电 tap 应该改成 24，现在还是 16（待改，需要重新综合）。
+- 这个比特流的输入时序检查关掉了（`set_false_path`），两种模式都靠扫描判断。
+- `health` 的 features 里多一项 `selectable sampling clock`，并显示正在用哪一种。
+- 时序：WNS 0.15 ns，WHS 0.05 ns。
+双模比特流验证（STM32H743，cachecliff，coverage 档每点 0.05 s；timing 档抓 0.3 s 共 4 次）：
+| 模式 | 引脚时钟 | 结果 |
+|---|---|---|
+| 直采 | 56.25 MHz | tap 0 到 31 全部干净；tap 15 timing 档 2 次干净 |
+| 直采 | 75 MHz | tap 18 到 31 干净，0 到 15 有错误；tap 24 timing 档 4 次干净（29 万个 slice） |
+| MMCM | 75 MHz | 相位 -150 到 0 干净 |
+RT1176 在双模比特流的 MMCM 模式下还没验证：验证时 FPGA 接的是 H743。MMCM 模式的时钟链和
+MMCM-only 比特流只差一个 `BUFGMUX_CTRL`，H743 上相位窗口与 MMCM-only 一致。
+
 ## 5. 实测（RT1176 EVK，cachecliff）
 判据：`E = max(0, lost-sync - resync(TraceOn)) + addr-nacc` 为 0 才算干净；ETM 溢出造成的
 `lost-sync` 总和 `resync(TraceOn)` 一样多，不算采样错误。每点先丢一段再抓，0.05 s。

@@ -60,6 +60,10 @@ module trace_capture_a7 #(
     //                clock. Region-local, tighter source-sync window between
     //                TRACECLK and the IDDR C pins — the shipped choice.
     //   "MMCM"     : TRACECLK -> MMCM (fine phase shift at run time) -> BUFG.
+    //   "DUAL"     : both, selected at run time by `sel_mmcm`: a glitch-free
+    //                BUFGMUX_CTRL picks between TRACECLK itself (through a global
+    //                buffer, so with a larger insertion delay than BUFIO: the
+    //                IDELAY tap has to make up for it) and the MMCM output.
     parameter CLK_BUF = "BUFG",
     // MMCM mode only: VCO multiplier (D = 1; the output divider equals it, so
     // the output has the TRACECLK frequency), TRACECLK period for the MMCM and
@@ -91,6 +95,7 @@ module trace_capture_a7 #(
     // MMCM mode: fine phase target in VCO/56 steps (signed, any clock domain,
     // quasi-static), relock request (toggle), and status in the ref_200m domain.
     // Unused in the other modes (inputs may be left open, outputs read 0).
+    input  wire        sel_mmcm,      // DUAL: 0 = TRACECLK direct, 1 = MMCM clock
     input  wire signed [9:0] phase_tgt,
     input  wire        relock_tog,
     output wire        mm_locked,
@@ -154,6 +159,49 @@ module trace_capture_a7 #(
                 .DWE      (1'b0)
             );
             BUFG u_bufg_mm (.I(clkout0), .O(trace_clk));
+            assign trace_clk_io = trace_clk;
+            mmcm_phase_ctl u_ps (
+                .clk        (ref_200m),
+                .rst        (rst),
+                .phase_tgt  (phase_tgt),
+                .relock_tog (relock_tog),
+                .mmcm_locked(locked_raw),
+                .psdone     (psdone),
+                .mmcm_rst   (mmcm_rst),
+                .psen       (psen),
+                .psincdec   (psincdec),
+                .locked_o   (mm_locked),
+                .cur        (mm_phase),
+                .busy       (mm_busy),
+                .lock_lost_cnt(mm_lock_lost),
+                .ps_timeout (mm_ps_timeout)
+            );
+        end else if (CLK_BUF == "DUAL") begin : g_dual
+            wire clkfb, clkout0, locked_raw, psdone, mmcm_rst, psen, psincdec;
+            MMCME2_ADV #(
+                .BANDWIDTH           ("OPTIMIZED"),
+                .COMPENSATION        ("INTERNAL"),
+                .CLKIN1_PERIOD       (MMCM_CLKIN_NS),
+                .DIVCLK_DIVIDE       (1),
+                .CLKFBOUT_MULT_F     (MMCM_MULT * 1.0),
+                .CLKOUT0_DIVIDE_F    (MMCM_MULT * 1.0),
+                .CLKOUT0_PHASE       (MMCM_PHASE_DEG),
+                .CLKOUT0_USE_FINE_PS ("TRUE"),
+                .STARTUP_WAIT        ("FALSE")
+            ) u_mmcm (
+                .CLKIN1   (trace_clk_ibuf), .CLKIN2 (1'b0), .CLKINSEL (1'b1),
+                .CLKFBIN  (clkfb),          .CLKFBOUT (clkfb),
+                .CLKOUT0  (clkout0),
+                .PSCLK    (ref_200m), .PSEN (psen), .PSINCDEC (psincdec),
+                .PSDONE   (psdone),
+                .LOCKED   (locked_raw), .RST (mmcm_rst), .PWRDWN (1'b0),
+                .DADDR    (7'd0), .DCLK (1'b0), .DEN (1'b0), .DI (16'd0),
+                .DWE      (1'b0)
+            );
+            // I0 = TRACECLK direct, I1 = MMCM output; S is a quasi-static CSR bit.
+            BUFGMUX_CTRL u_clkmux (
+                .I0 (trace_clk_ibuf), .I1 (clkout0), .S (sel_mmcm), .O (trace_clk)
+            );
             assign trace_clk_io = trace_clk;
             mmcm_phase_ctl u_ps (
                 .clk        (ref_200m),

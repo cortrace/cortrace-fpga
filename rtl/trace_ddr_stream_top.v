@@ -35,6 +35,8 @@
 //         VCO/56 steps, signed 10 bit. Write 0x14 (low 8 bits), then 0x15 (bits
 //         [1:0] = bits 9:8); the target is applied by the 0x15 write.
 //   0x16  any write: reset the sampling MMCM (relock, phase back to the target)
+//   0x17  sampling clock source (USE_MMCM=2 builds): 0 = TRACECLK direct (power-on),
+//         1 = the MMCM. Re-arm after changing it.
 //
 // Readouts (:5001, 0xFF page):
 //   0xFF50..0xFF6F  DDR-ring status (magic 0xD1) — SAME AS ddr_ring_selftest
@@ -53,6 +55,7 @@
 //                   all 0 on builds without it (FEATURES bit6)
 //   0xFF96/0xFF97   MMCM phase reached, signed 10 bit (low, high[1:0])
 //   0xFF98          MMCM lock-loss count (saturating)
+//   0xFF99          sampling clock source in use (CSR 0x17); 0 on other builds
 //   -- from dbg_regfile (existing) at 0xFF10..0xFF4F
 //
 // r39 lesson embedded: STREAM_PKT_BYTES is bound to (PKT = PAYLOAD + 4),
@@ -67,7 +70,8 @@ module trace_ddr_stream_top #(
     parameter       TRACE_WIDTH = 4,            // power-on TPIU width (4/2/1)
     // 1: sample with an MMCM output whose phase is set at run time (CSR 0x14/
     // 0x15), instead of the BUFIO clock. For edge-aligned targets; see
-    // trace_capture_a7. MMCM_MULT sets the usable TRACECLK range (VCO 600..1200
+    // trace_capture_a7. 2: both, chosen at run time with CSR 0x17 (TRACECLK
+    // direct through a global buffer, or the MMCM). MMCM_MULT sets the usable TRACECLK range (VCO 600..1200
     // MHz: 14 -> 42.9..85.7 MHz) and MMCM_CLKIN_NS must match the TRACECLK.
     parameter integer USE_MMCM       = 0,
     parameter integer MMCM_MULT      = 14,
@@ -224,6 +228,7 @@ module trace_ddr_stream_top #(
     reg  [7:0]  mm_phase_lo_125 = 0; // 0x14 (latched until 0x15 applies it)
     reg signed [9:0] mm_phase_125 = 0; // 0x14/0x15 (MMCM fine phase target)
     reg         mm_relock_125 = 0;   // 0x16 (toggles: MMCM reset request)
+    reg         clk_sel_125 = 0;     // 0x17 (USE_MMCM=2: 1 = MMCM sampling clock)
     reg         dbg_clr_125 = 0;     // 0x10 (one-cycle pulse into dbg_regfile.clr)
     always @(posedge clk125) begin
         dbg_clr_125 <= 1'b0;
@@ -237,6 +242,7 @@ module trace_ddr_stream_top #(
             8'h14: mm_phase_lo_125 <= csr_data_w;
             8'h15: mm_phase_125 <= {csr_data_w[1:0], mm_phase_lo_125};
             8'h16: mm_relock_125 <= ~mm_relock_125;
+            8'h17: clk_sel_125 <= csr_data_w[0];
             8'h08: width_csr      <= (csr_data_w == 8'd2) ? 2'd1 :
                                      (csr_data_w == 8'd1) ? 2'd2 : 2'd0;
             8'h09: selftest_csr   <= csr_data_w[0];
@@ -256,7 +262,7 @@ module trace_ddr_stream_top #(
     wire signed [9:0] mm_phase_200;
     wire [7:0]  mm_lost_200;
     trace_capture_a7 #(
-        .CLK_BUF   (USE_MMCM ? "MMCM" : "BUFR_IO"),
+        .CLK_BUF   (USE_MMCM == 2 ? "DUAL" : USE_MMCM ? "MMCM" : "BUFR_IO"),
         .IDLY_INIT (IDLY_INIT),
         .MMCM_MULT (MMCM_MULT),
         .MMCM_CLKIN_NS (MMCM_CLKIN_NS),
@@ -268,6 +274,7 @@ module trace_ddr_stream_top #(
         .trace_data_p (trace_data_in),
         .test_src_en  (iddr_prbs_125),   // synced to trace_clk inside
         .idly_tap     (idly_tap_125),    // synced to clk200 inside
+        .sel_mmcm     (clk_sel_125),
         .phase_tgt    (mm_phase_125),    // synced to clk200 inside
         .relock_tog   (mm_relock_125),
         .mm_locked    (mm_locked_200),
@@ -528,7 +535,9 @@ module trace_ddr_stream_top #(
         mm_lk_d    <= mm_lk_s[1];
     end
     wire mm_locked_125 = mm_lk_s[1];
-    wire mm_unlock_125 = (USE_MMCM != 0) && mm_lk_d && !mm_lk_s[1];
+    // In the dual build the MMCM is only part of the capture path when selected.
+    wire mm_unlock_125 = (USE_MMCM != 0) && (USE_MMCM == 1 || clk_sel_125) &&
+                         mm_lk_d && !mm_lk_s[1];
     // ============ dbg_regfile (existing, clk125) ============
     wire [15:0] ext_addr;
     wire [7:0]  dbg_rdata;
@@ -564,7 +573,9 @@ module trace_ddr_stream_top #(
     //   bit4  CSR 0x10 clears the sticky error and counters
     //   bit5  run-time IDELAY tap of the data lanes (CSR 0x05 / 0x06)
     //   bit6  sampling clock from an MMCM with a run-time phase (CSR 0x14..0x16)
-    localparam [7:0] FEATURES = (USE_MMCM != 0) ? 8'b0111_1110 : 8'b0011_1110;
+    //   bit7  run-time choice between TRACECLK direct and the MMCM (CSR 0x17)
+    localparam [7:0] FEATURES = (USE_MMCM == 2) ? 8'b1111_1110 :
+                                (USE_MMCM != 0) ? 8'b0111_1110 : 8'b0011_1110;
     // ============ Readout page mux (:5001) ============
     wire dbg_page  = (ext_addr[15:8] == 8'hFF) &&
                      (ext_addr[7:4] >= 4'h1) && (ext_addr[7:4] <= 4'h4);
@@ -631,6 +642,7 @@ module trace_ddr_stream_top #(
         (ext_addr == 16'hFF96) ? mm_ph_s2[7:0]       :
         (ext_addr == 16'hFF97) ? {6'b0, mm_ph_s2[9:8]} :
         (ext_addr == 16'hFF98) ? mm_lost_s2          :
+        (ext_addr == 16'hFF99) ? {7'b0, (USE_MMCM == 2) ? clk_sel_125 : (USE_MMCM == 1)} :
         8'h00;
     wire ring_page = (ext_addr[15:8] == 8'hFF) &&
                      (ext_addr[7:4] >= 4'h5) && (ext_addr[7:4] <= 4'h9);

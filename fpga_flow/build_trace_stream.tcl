@@ -12,6 +12,7 @@
 #   # optional: OUTBIT=<name>.bit env override
 #   # optional: TRACE_USE_MMCM=1 builds the MMCM sampling clock (run-time fine
 #   #   phase, CSR 0x14..0x16) for edge-aligned targets such as the i.MX RT1176.
+#   #   TRACE_USE_MMCM=2 builds both and picks one at run time (CSR 0x17).
 #   #   TRACE_MMCM_MULT (default 14) sets the TRACECLK range, VCO 600..1200 MHz:
 #   #   14 -> 42.9..85.7 MHz. TRACE_MMCM_CLKIN_NS (default 16.0) is its period.
 #
@@ -127,7 +128,7 @@ set use_mmcm 0
 set mmcm_mult 14
 set mmcm_clkin_ns 16.0
 if {[info exists ::env(TRACE_USE_MMCM)] && $::env(TRACE_USE_MMCM) ne "0"} {
-    set use_mmcm 1
+    set use_mmcm $::env(TRACE_USE_MMCM)
     if {[info exists ::env(TRACE_MMCM_MULT)]} { set mmcm_mult $::env(TRACE_MMCM_MULT) }
     if {[info exists ::env(TRACE_MMCM_CLKIN_NS)]} { set mmcm_clkin_ns $::env(TRACE_MMCM_CLKIN_NS) }
     puts "TRACE SAMPLING CLOCK: MMCM, mult=$mmcm_mult, TRACECLK period=$mmcm_clkin_ns ns"
@@ -162,7 +163,21 @@ set_false_path -to [get_cells -hier -filter {NAME =~ *selftest_s0_reg* || \
                                               NAME =~ *src_fixed_s0_reg* || \
                                               NAME =~ *tap_s1_reg*}]
 
-if {$use_mmcm} {
+if {$use_mmcm == 2} {
+    # Dual build: the clock constraint stays at the 12 ns of the XDC (83 MHz, so
+    # the MMCM's VCO is 1166 MHz at M=14). The sampling phase is moved at run
+    # time in both modes, so the pin-to-IDDR timing is left to the eye scan.
+    set_false_path -from [get_ports {trace_data_in[*]}]
+    set_false_path -to [get_cells -hier -filter {NAME =~ *u_ps/t1_reg* || \
+                                                  NAME =~ *u_ps/rl_reg* || \
+                                                  NAME =~ *u_ps/lk_reg* || \
+                                                  NAME =~ *mm_lk_s_reg* || \
+                                                  NAME =~ *mm_busy_s_reg* || \
+                                                  NAME =~ *mm_to_s_reg* || \
+                                                  NAME =~ *mm_ph_s1_reg* || \
+                                                  NAME =~ *mm_lost_s1_reg* || \
+                                                  NAME =~ *clk_sel_125_reg*}]
+} elseif {$use_mmcm} {
     # The MMCM's VCO range is checked against this period, and the sampling
     # phase is moved at run time, so STA cannot judge the pin-to-IDDR timing:
     # leave it to the eye scan (cortrace fpga ctrl set-phase).
