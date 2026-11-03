@@ -94,14 +94,16 @@ H743 跑 cachecliff 固件（`make CACHECLIFF=1`，`-DPLL_R_OVR` 和 `-DPLL_N_OV
 | 75 MHz | -200 到 0（窗口中心约 -100，相位 0 在边缘） |
 | 83.3 MHz | +50 到 +225 |
 窗口都比 IDELAY 宽，但中心位置随频率变，要按频率扫相位，不能固定写 0。
-**timing 档不如默认比特流**：83.3 MHz、timing 档、抓 0.3 s：
-- 默认比特流（v1.1.0，IDELAY tap 15）：解出 322532 个 slice，`lost-sync=0`，`addr-nacc=0`，干净。
-  coverage 档 tap 6 到 27 都干净。
-- MMCM 比特流，相位 +140：四次里两次 `addr-nacc` 95 和 128、`lost-sync` 1147 和 2269，
-  另外两次没有事件；相位 +100、+125 也没有事件。
-同一个相位在 coverage 档干净，在 timing 档不干净。原因我没有查清（timing 档的数据量约
-是 coverage 档的 4 倍，且带时间戳）。56 和 75 MHz 的 timing 档没有对比。
-所以现阶段：H743 继续用默认比特流，MMCM 比特流给 RT1176。
+**timing 档（Perfetto 用的那档），MMCM 比特流，抓 0.3 s，各 4 次**：
+| 引脚时钟 | MMCM 相位 | 结果 |
+|---|---|---|
+| 56.25 MHz | -25 | 4 次都是 29 万个 slice，`lost-sync=0`，`addr-nacc=0` |
+| 75 MHz | -100 | 4 次都是 29 万个 slice，`lost-sync=0`，`addr-nacc=0` |
+| 83.3 MHz | +140 | 4 次里 2 次 `addr-nacc` 95 和 128、`lost-sync` 1147 和 2269，另 2 次没有事件；+100、+125 也没有事件 |
+56 和 75 MHz 相对默认比特流没有回归。83.3 MHz 在 timing 档不稳，默认比特流（v1.1.0，IDELAY
+tap 15）只抓了一次，干净（322532 个 slice，无错误），没有重复，所以不能说 83.3 MHz 在默认比特流上
+一定稳。同一个相位在 coverage 档干净、timing 档不干净，原因没有查清。
+H743 的实际工作点是 56 MHz，75 MHz 稳定，认为没有回归。83.3 MHz 的 timing 档留作遗留问题。
 ## 6. 限制
 - 一个比特流只覆盖一个频率范围（M=14：42.9 到 85.7 MHz）。DRP 动态改倍频不能和精细移相同时
   用（XAPP888 的参考设计不支持开了精细移相的输出）。低于 42.9 MHz 时请用默认比特流，
