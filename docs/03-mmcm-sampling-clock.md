@@ -83,6 +83,19 @@ cortrace fpga ctrl set-mode mmcm       # 用 set-phase 调
 RT1176 在双模比特流的 MMCM 模式下还没验证：验证时 FPGA 接的是 H743。MMCM 模式的时钟链和
 MMCM-only 比特流只差一个 `BUFGMUX_CTRL`，H743 上相位窗口与 MMCM-only 一致。
 
+## 4c. 自动校准
+`cortrace fpga ctrl calibrate --elf fw.elf` 自动扫采样旋钮并写入干净窗口的中点：直采扫
+IDELAY tap（0 到 31），MMCM 扫相位（环形，一个位时间是 `28 × MMCM_MULT` 步，M=14 是 392 步，
+窗口可以绕过范围两端）。每个设置抓一小段、用 `cortrace-decode` 解码；采样错误
+（`lost-sync` 减去 `resync(TraceOn)`，加 `addr-nacc`）为 0，且事件数不少于粗扫 90 分位的一半，
+才算通过。找到最长的通过段，二分到一档，取中点写入，再抓 0.3 s 验证。目标要已经 arm
+并且在跑一段变化的程序。设计和判据的由来见 cortrace 仓库的 `docs/04-user-guide.md`
+和 `python/cortrace/fpga/calibrate.py` 的文件头。
+RT1176，53 MHz，MMCM：窗口 -196 到 -1，选 -99，验证抓取 274034 个事件无采样错误；
+重复三次（`--secs 0.03 --no-apply`，每次约 2 分 10 秒）：窗口 -186 到 12、-187 到 11、-189 到 12，选中的
+点 -87、-88、-89，宽度 199 到 202 步（约 4.8 ns）。
+直采、33 MHz：只有 tap 27 到 31 通过（贴着范围边），低于下限 6 档，不应用。
+
 ## 5. 实测（RT1176 EVK，cachecliff）
 判据：`E = max(0, lost-sync - resync(TraceOn)) + addr-nacc` 为 0 才算干净；ETM 溢出造成的
 `lost-sync` 总和 `resync(TraceOn)` 一样多，不算采样错误。每点先丢一段再抓，0.05 s。
