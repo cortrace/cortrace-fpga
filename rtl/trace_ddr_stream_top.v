@@ -68,10 +68,10 @@ module trace_ddr_stream_top #(
     // 1: sample with an MMCM output whose phase is set at run time (CSR 0x14/
     // 0x15), instead of the BUFIO clock. For edge-aligned targets; see
     // trace_capture_a7. MMCM_MULT sets the usable TRACECLK range (VCO 600..1200
-    // MHz: 16 -> 37.5..75 MHz) and MMCM_CLKIN_NS must match the TRACECLK.
+    // MHz: 14 -> 42.9..85.7 MHz) and MMCM_CLKIN_NS must match the TRACECLK.
     parameter integer USE_MMCM       = 0,
-    parameter integer MMCM_MULT      = 16,
-    parameter real    MMCM_CLKIN_NS  = 22.727,
+    parameter integer MMCM_MULT      = 14,
+    parameter real    MMCM_CLKIN_NS  = 16.0,
     parameter real    MMCM_PHASE_DEG = 0.0,
     parameter [31:0] DEST_IP        = {8'd192, 8'd168, 8'd10, 8'd245},
     parameter [15:0] DEST_PORT      = 16'd5555,

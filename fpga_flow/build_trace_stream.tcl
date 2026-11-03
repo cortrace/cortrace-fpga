@@ -12,8 +12,8 @@
 #   # optional: OUTBIT=<name>.bit env override
 #   # optional: TRACE_USE_MMCM=1 builds the MMCM sampling clock (run-time fine
 #   #   phase, CSR 0x14..0x16) for edge-aligned targets such as the i.MX RT1176.
-#   #   TRACE_MMCM_MULT (default 16) sets the TRACECLK range, VCO 600..1200 MHz:
-#   #   16 -> 37.5..75 MHz. TRACE_MMCM_CLKIN_NS (default 22.727) is its period.
+#   #   TRACE_MMCM_MULT (default 14) sets the TRACECLK range, VCO 600..1200 MHz:
+#   #   14 -> 42.9..85.7 MHz. TRACE_MMCM_CLKIN_NS (default 16.0) is its period.
 #
 # On the board:
 #   1. Program the .bit (openFPGALoader -c ft232 --fpga-part xc7a35tfgg484 [-f])
@@ -124,8 +124,8 @@ puts "VERSION = $ver  git = $git_txt  flags = $ver_flags"
 # data is sampled on the TRACECLK edge, frequency-independent -- one bitstream
 # covers every TRACECLK the board SI supports. See docs/history/.../30-*.md.
 set use_mmcm 0
-set mmcm_mult 16
-set mmcm_clkin_ns 22.727
+set mmcm_mult 14
+set mmcm_clkin_ns 16.0
 if {[info exists ::env(TRACE_USE_MMCM)] && $::env(TRACE_USE_MMCM) ne "0"} {
     set use_mmcm 1
     if {[info exists ::env(TRACE_MMCM_MULT)]} { set mmcm_mult $::env(TRACE_MMCM_MULT) }

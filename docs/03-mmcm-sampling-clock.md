@@ -19,7 +19,7 @@ TRACECLK ─IBUF─► MMCM ─CLKOUT0─► BUFG ─┬─► IDDR C（采样�
 ```
 - MMCM 的 D 为 1，倍频系数 `MMCM_MULT`，输出分频等于 `MMCM_MULT`，所以输出频率等于
   TRACECLK。VCO 必须在 600 到 1200 MHz，所以一个比特流只覆盖
-  `[600, 1200] / MMCM_MULT` MHz。默认 16 对应 37.5 到 75 MHz。
+  `[600, 1200] / MMCM_MULT` MHz。默认 14 对应 42.9 到 85.7 MHz，正好盖住 RT1176 的 44 到 66 MHz 和 H743 的 56 到 83 MHz。
 - `mmcm_phase_ctl` 把主机写的目标相位（有符号 10 位，限幅 ±255 步）一步一步送到 MMCM，
   每步约 15 个 PSCLK（200 MHz）周期。它也负责锁定监督：
   - 上电时复位 MMCM。
@@ -31,14 +31,14 @@ TRACECLK ─IBUF─► MMCM ─CLKOUT0─► BUFG ─┬─► IDDR C（采样�
 ```bash
 source <Vivado 2021.1>/settings64.sh
 cd cortrace-fpga/build
-TRACE_USE_MMCM=1 TRACE_MMCM_CLKIN_NS=18.0 OUTBIT=trace_ddr_stream_mmcm.bit \
+TRACE_USE_MMCM=1 OUTBIT=trace_ddr_stream_mmcm.bit \
   vivado -mode batch -source ../fpga_flow/build_trace_stream.tcl
 ```
-- `TRACE_MMCM_MULT`（默认 16）和 `TRACE_MMCM_CLKIN_NS`（默认 22.727）要和目标的 TRACECLK
+- `TRACE_MMCM_MULT`（默认 14）和 `TRACE_MMCM_CLKIN_NS`（默认 16.0）要和目标的 TRACECLK
   匹配：VCO = 频率 × MULT 必须在 600 到 1200 MHz。
 - MMCM 模式下构建脚本把 `trace_data_in` 到 IDDR 的时序检查关掉（`set_false_path`）：相位在
   运行时移动，STA 没法判断。采样是否正确靠相位扫描判断。
-- 时序全部满足（WNS 0.12 ns，WHS 0.04 ns，v1.1.0 基础上）。
+- 时序全部满足（M=14：WNS 0.14 ns，WHS 0.03 ns，v1.1.0 基础上）。
 - 用 `fpga_flash.sh --sram` 先试，断电后回到 flash 里的设计。
 ## 4. 控制与读出
 | CSR | 作用 |
@@ -59,31 +59,46 @@ cortrace fpga health                               # 显示锁定、相位和失
 ```
 目标改了 TRACECLK 频率以后，MMCM 可能失锁，也可能没有失锁但相位关系变了，所以改频率后
 先 `relock`，再重新扫相位。
-## 5. 实测（RT1176 EVK，cachecliff，每点抓 0.05 s）
-"干净"指 `addr-nacc` 为 0 或接近 0，且 `lost-sync` 与 `resync(TraceOn)` 相当
-（后者是 ETM 溢出，不是采样错误）。
+## 5. 实测（RT1176 EVK，cachecliff）
+判据：`E = max(0, lost-sync - resync(TraceOn)) + addr-nacc` 为 0 才算干净；ETM 溢出造成的
+`lost-sync` 总和 `resync(TraceOn)` 一样多，不算采样错误。每点先丢一段再抓，0.05 s。
+**不要把一次 0.3 s 抓取里 `addr-nacc=0` 当成"干净"**：同一个点重复抓会有几十的差别，这条
+判据在本文早先的一版里用错过（见 §7）。
+**排线 A（飞线）**：
 | 引脚时钟 | 焊盘（时钟/数据） | 只用 IDELAY | MMCM 相位 |
 |---|---|---|---|
-| 44 MHz | 0x2 / 0x3 | tap 12 到 18 | -80 到 -20 步（约 -2.0 到 -0.5 ns）干净 |
-| 53 MHz | 0x2 / 0x2 | 没有干净点（tap 31 最接近，addr-nacc 59） | -90 到 -50 步（约 -1.9 到 -1.1 ns）干净，中心约 -70 |
-| 53 MHz | 0x3 / 0x3 | 没有 | 没有干净点 |
-| 66 MHz | 0x2 / 0x2 | 解不出 | 没有干净点，addr-nacc 最低约 67 |
-- 53 MHz 在 -70 步抓 0.3 s（timing 档）：`lost-sync=7`、`resync(TraceOn)=7`、`addr-nacc=0`。
-  44 MHz 同样的抓取是 55 到 62。差异来自带宽，不是采样。
-- 66 MHz 的有数据区间在 -210 和 +210 步附近重复出现，间隔和一个位时间（约 425 步）一致，
-  说明相位移动是对的。66 MHz 一位只有 7.6 ns，焊盘慢转换的边沿占掉了大部分，
-  眼图基本闭合，这是目标板和线的限制，相位调不出来。
-- 步长随 VCO 变化：44 MHz 约 25.4 ps，52.8 MHz 约 21.1 ps，66 MHz 约 17.9 ps（M=16）。
+| 44 MHz | 0x2 / 0x3 | tap 12 到 18 | -120 到 -50 步干净 |
+| 53 MHz | 0x2 / 0x2 | 没有干净点 | 最好的点（-70 步）重复抓 0.3 s，`addr-nacc` 55 到 137，不干净 |
+| 66 MHz | 0x2 / 0x2 | 解不出 | 没有干净点 |
+**排线 B（EVK 一侧 R1881 到 R1885 换成 33 Ω，排线空脚接地）**，焊盘 0x2 / 0x2，M=14，
+RAM 镜像（`make RAM=1`），coverage 档：
+| 引脚时钟 | MMCM 相位（步） | 说明 |
+|---|---|---|
+| 44 MHz | -150 到 -30 干净 | 窗口下沿没扫到；XIP 镜像，timing 档 |
+| 53 MHz | -190 到 -30 干净，-10 起失败 | 约 3.9 ns 宽；下沿没扫到 |
+| 66 MHz | -110 到 -50 干净，-30 起失败 | 约 1.1 到 1.5 ns 宽 |
+| 66 MHz，焊盘全 0x3 | 没有干净点 | 快转换在 66 MHz 反而更差 |
+- 排线 B 把 53 MHz 从"没有干净点"变成"窗口约 4 ns"，66 MHz 从"解不出"变成"约 1.3 ns"。
+  这是这几次测量里改善最大的一项。
+- 66 MHz 在 timing 档、相位 -80 步，重复抓 0.3 s：一次 `addr-nacc=0`，一次 8，另外两次
+  解码没有结果（目标那时可能没有产生 ETM 数据）。结论只能写到"窗口里大多干净"。
+- 两个排线版本用的目标镜像不同（飞线时是 XIP，33 Ω 时 XIP 镜像因板子掉进 ROM 而改成 RAM
+  镜像），ETM 流量不同，这里没有隔离这个变量。
+- 步长随 VCO 变化（M=14）：44 MHz 约 29 ps，52.8 MHz 约 24 ps，66 MHz 约 19 ps。
 ## 6. 限制
-- 一个比特流只覆盖一个频率范围（M=16：37.5 到 75 MHz）。要覆盖更宽需要 DRP 动态重配或者
-  多个比特流。低于 37.5 MHz 时请用默认比特流，IDELAY 在那里已经够用。
+- 一个比特流只覆盖一个频率范围（M=14：42.9 到 85.7 MHz）。DRP 动态改倍频不能和精细移相同时
+  用（XAPP888 的参考设计不支持开了精细移相的输出）。低于 42.9 MHz 时请用默认比特流，
+  IDELAY 在那里已经够用。
 - 相位范围 ±255 步。硬件在多大范围内保持单调我没有查证；实测在 44 到 66 MHz
   的一个位时间内行为合理。
 - 失锁期间 MMCM 输出无效，抓到的字节作废，恢复后由解码器重新同步。
 - STA 不检查输入时序（见 §3）。
 - 目前相位靠手工扫描。`docs/02` 的自动校准设计（已提交，工作区里该文件被删了，未动）
   可以直接把 `set-phase` 当作旋钮。
-## 7. 和 orbtrace 的关系
+## 7. 更正记录
+本文第一版写过"53 MHz 用 MMCM 干净"，依据是一次 0.3 s 抓取 `addr-nacc=0`。重复测量不成立
+（M=14 和 M=16 一样，`addr-nacc` 59 到 137）。已按 §5 改正。
+## 8. 和 orbtrace 的关系
 orbtrace 上游的 `trace/glue.py` 用 litex 的 `DDRInput`，以 TRACECLK 本身为时钟，没有 PLL、
 MMCM、IDELAY 或相位调节（工作区 `orbcode/orbtrace` 里可以核对）。本项目早期的
 `docs/history/proposals/35-上游极简采样链直接移植.md` 也是这样判断的，并提过"加一个 90° 相移

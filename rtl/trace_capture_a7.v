@@ -28,7 +28,7 @@
 // output (same frequency) clocks the IDDRs and the fabric, and mmcm_phase_ctl
 // shifts that output in 1/56 VCO-period steps at run time (CSR in the top
 // level). The VCO must stay inside 600..1200 MHz, so the pin clock has to be
-// in [600, 1200] / MMCM_MULT MHz (16 -> 37.5..75 MHz). The MMCM output is only
+// in [600, 1200] / MMCM_MULT MHz (14 -> 42.9..85.7 MHz). The MMCM output is only
 // valid while it is locked; STA cannot judge the sampling in this mode (the
 // phase is moved at run time), so the build disables the input timing check.
 //
@@ -64,8 +64,8 @@ module trace_capture_a7 #(
     // MMCM mode only: VCO multiplier (D = 1; the output divider equals it, so
     // the output has the TRACECLK frequency), TRACECLK period for the MMCM and
     // the static phase of the output in degrees (the run-time shift adds to it).
-    parameter integer MMCM_MULT      = 16,
-    parameter real    MMCM_CLKIN_NS  = 22.727,
+    parameter integer MMCM_MULT      = 14,
+    parameter real    MMCM_CLKIN_NS  = 16.0,
     parameter real    MMCM_PHASE_DEG = 0.0,
     // Power-on IDELAY tap of every data lane (0..31, 78 ps each). 16 sits in
     // the clean range from 56 to 83 MHz and is the best single value at 90 MHz.
