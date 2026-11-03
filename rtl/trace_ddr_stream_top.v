@@ -31,6 +31,10 @@
 //   0x0C  1 -> clear r38 P0-4 diag latches (pkt_tdata bad-byte tap)
 //   0x10  any write: clear the sticky first error and the counters of the
 //         debug register file (the capture path itself is not touched)
+//   0x14/0x15  MMCM sampling clock (USE_MMCM=1 builds): fine phase target in
+//         VCO/56 steps, signed 10 bit. Write 0x14 (low 8 bits), then 0x15 (bits
+//         [1:0] = bits 9:8); the target is applied by the 0x15 write.
+//   0x16  any write: reset the sampling MMCM (relock, phase back to the target)
 //
 // Readouts (:5001, 0xFF page):
 //   0xFF50..0xFF6F  DDR-ring status (magic 0xD1) — SAME AS ddr_ring_selftest
@@ -45,6 +49,10 @@
 //   0xFF7E          ID block marker 0xFA (reads 0 on bitstreams without it)
 //   0xFF7F          ID block format (1)
 //   0xFF80..0xFF94  r38 P0-4 bad-byte diag latch (magic 0xD2)
+//   0xFF95          MMCM sampling clock status {5'b0, timeout, busy, locked};
+//                   all 0 on builds without it (FEATURES bit6)
+//   0xFF96/0xFF97   MMCM phase reached, signed 10 bit (low, high[1:0])
+//   0xFF98          MMCM lock-loss count (saturating)
 //   -- from dbg_regfile (existing) at 0xFF10..0xFF4F
 //
 // r39 lesson embedded: STREAM_PKT_BYTES is bound to (PKT = PAYLOAD + 4),
@@ -57,6 +65,14 @@ module trace_ddr_stream_top #(
     // trace_capture_a7); IDLY_INIT is the power-on tap.
     parameter [4:0] IDLY_INIT   = 5'd16,
     parameter       TRACE_WIDTH = 4,            // power-on TPIU width (4/2/1)
+    // 1: sample with an MMCM output whose phase is set at run time (CSR 0x14/
+    // 0x15), instead of the BUFIO clock. For edge-aligned targets; see
+    // trace_capture_a7. MMCM_MULT sets the usable TRACECLK range (VCO 600..1200
+    // MHz: 16 -> 37.5..75 MHz) and MMCM_CLKIN_NS must match the TRACECLK.
+    parameter integer USE_MMCM       = 0,
+    parameter integer MMCM_MULT      = 16,
+    parameter real    MMCM_CLKIN_NS  = 22.727,
+    parameter real    MMCM_PHASE_DEG = 0.0,
     parameter [31:0] DEST_IP        = {8'd192, 8'd168, 8'd10, 8'd245},
     parameter [15:0] DEST_PORT      = 16'd5555,
     parameter integer LENGTH        = 64,       // 128-bit words per DDR3 burst
@@ -205,6 +221,9 @@ module trace_ddr_stream_top #(
                                      //       stresses IDDR->CDC->DDR->UDP path)
 
     reg  [19:0] idly_tap_125 = {4{IDLY_INIT}};  // 0x05/0x06 (IDELAY tap per data lane)
+    reg  [7:0]  mm_phase_lo_125 = 0; // 0x14 (latched until 0x15 applies it)
+    reg signed [9:0] mm_phase_125 = 0; // 0x14/0x15 (MMCM fine phase target)
+    reg         mm_relock_125 = 0;   // 0x16 (toggles: MMCM reset request)
     reg         dbg_clr_125 = 0;     // 0x10 (one-cycle pulse into dbg_regfile.clr)
     always @(posedge clk125) begin
         dbg_clr_125 <= 1'b0;
@@ -215,6 +234,9 @@ module trace_ddr_stream_top #(
             8'h10: dbg_clr_125 <= 1'b1;
             8'h05: idly_tap_125 <= {4{csr_data_w[4:0]}};
             8'h06: idly_tap_125[5*csr_data_w[6:5] +: 5] <= csr_data_w[4:0];
+            8'h14: mm_phase_lo_125 <= csr_data_w;
+            8'h15: mm_phase_125 <= {csr_data_w[1:0], mm_phase_lo_125};
+            8'h16: mm_relock_125 <= ~mm_relock_125;
             8'h08: width_csr      <= (csr_data_w == 8'd2) ? 2'd1 :
                                      (csr_data_w == 8'd1) ? 2'd2 : 2'd0;
             8'h09: selftest_csr   <= csr_data_w[0];
@@ -230,9 +252,15 @@ module trace_ddr_stream_top #(
     wire [7:0]  cap_byte;
     wire        cap_valid;
 
+    wire        mm_locked_200, mm_busy_200, mm_to_200;
+    wire signed [9:0] mm_phase_200;
+    wire [7:0]  mm_lost_200;
     trace_capture_a7 #(
-        .CLK_BUF   ("BUFR_IO"),
-        .IDLY_INIT (IDLY_INIT)
+        .CLK_BUF   (USE_MMCM ? "MMCM" : "BUFR_IO"),
+        .IDLY_INIT (IDLY_INIT),
+        .MMCM_MULT (MMCM_MULT),
+        .MMCM_CLKIN_NS (MMCM_CLKIN_NS),
+        .MMCM_PHASE_DEG (MMCM_PHASE_DEG)
     ) u_capture (
         .rst          (rst200),
         .ref_200m     (clk200),
@@ -240,6 +268,13 @@ module trace_ddr_stream_top #(
         .trace_data_p (trace_data_in),
         .test_src_en  (iddr_prbs_125),   // synced to trace_clk inside
         .idly_tap     (idly_tap_125),    // synced to clk200 inside
+        .phase_tgt    (mm_phase_125),    // synced to clk200 inside
+        .relock_tog   (mm_relock_125),
+        .mm_locked    (mm_locked_200),
+        .mm_phase     (mm_phase_200),
+        .mm_busy      (mm_busy_200),
+        .mm_lock_lost (mm_lost_200),
+        .mm_ps_timeout(mm_to_200),
         .trace_clk    (),
         .trace_a      (),
         .trace_b      (),
@@ -478,6 +513,22 @@ module trace_ddr_stream_top #(
 
     reg overrun_125_d = 0;
     always @(posedge clk125) overrun_125_d <= overrun_125;
+    // MMCM sampling clock status, clk200 -> clk125. Quasi-static (the phase
+    // moves one step per 75 ns and a read happens once it is idle).
+    reg [1:0] mm_lk_s = 0, mm_busy_s = 0, mm_to_s = 0;
+    reg signed [9:0] mm_ph_s1 = 0, mm_ph_s2 = 0;
+    reg [7:0] mm_lost_s1 = 0, mm_lost_s2 = 0;
+    reg mm_lk_d = 0;
+    always @(posedge clk125) begin
+        mm_lk_s    <= {mm_lk_s[0], mm_locked_200};
+        mm_busy_s  <= {mm_busy_s[0], mm_busy_200};
+        mm_to_s    <= {mm_to_s[0], mm_to_200};
+        mm_ph_s1   <= mm_phase_200;  mm_ph_s2   <= mm_ph_s1;
+        mm_lost_s1 <= mm_lost_200;   mm_lost_s2 <= mm_lost_s1;
+        mm_lk_d    <= mm_lk_s[1];
+    end
+    wire mm_locked_125 = mm_lk_s[1];
+    wire mm_unlock_125 = (USE_MMCM != 0) && mm_lk_d && !mm_lk_s[1];
     // ============ dbg_regfile (existing, clk125) ============
     wire [15:0] ext_addr;
     wire [7:0]  dbg_rdata;
@@ -489,12 +540,12 @@ module trace_ddr_stream_top #(
         .clk(clk125), .rst(sys_rst), .clr(dbg_clr_125),
         // ring_overrun is a sticky level; report only its rising edge, so a
         // clear followed by a new lap is seen as a new error.
-        .e_no_traceclk(1'b0), .e_mmcm_unlock(1'b0),
+        .e_no_traceclk(1'b0), .e_mmcm_unlock(mm_unlock_125),
         .e_cap_overflow(overrun_125 & ~overrun_125_d),
         .e_selftx_stuck(dbg_selftx_stuck), .e_rx_bad_frame(dbg_rx_bad_frame),
         .e_tx_fifo_ovf(dbg_tx_fifo_ovf), .e_rx_fifo_ovf(dbg_rx_fifo_ovf),
         .sys_mmcm_locked(mmcm_sys_locked),
-        .trace_mmcm_locked(calib_125),
+        .trace_mmcm_locked(USE_MMCM != 0 ? mm_locked_125 : calib_125),
         .traceclk_active(1'b0),
         .selftx_state(dbg_selftx_state), .pkt_active(pkt_active),
         .lost_cnt(wr_lost_125),
@@ -512,7 +563,8 @@ module trace_ddr_stream_top #(
     //   bit3  run-time TPIU port width select (CSR 0x08)
     //   bit4  CSR 0x10 clears the sticky error and counters
     //   bit5  run-time IDELAY tap of the data lanes (CSR 0x05 / 0x06)
-    localparam [7:0] FEATURES = 8'b0011_1110;
+    //   bit6  sampling clock from an MMCM with a run-time phase (CSR 0x14..0x16)
+    localparam [7:0] FEATURES = (USE_MMCM != 0) ? 8'b0111_1110 : 8'b0011_1110;
     // ============ Readout page mux (:5001) ============
     wire dbg_page  = (ext_addr[15:8] == 8'hFF) &&
                      (ext_addr[7:4] >= 4'h1) && (ext_addr[7:4] <= 4'h4);
@@ -575,6 +627,10 @@ module trace_ddr_stream_top #(
         (ext_addr == 16'hFF92) ? pkt_active_pulses[15:8]:
         (ext_addr == 16'hFF93) ? pkt_active_pulses[23:16]:
         (ext_addr == 16'hFF94) ? pkt_active_pulses[31:24]:
+        (ext_addr == 16'hFF95) ? {5'b0, mm_to_s[1], mm_busy_s[1], mm_locked_125} :
+        (ext_addr == 16'hFF96) ? mm_ph_s2[7:0]       :
+        (ext_addr == 16'hFF97) ? {6'b0, mm_ph_s2[9:8]} :
+        (ext_addr == 16'hFF98) ? mm_lost_s2          :
         8'h00;
     wire ring_page = (ext_addr[15:8] == 8'hFF) &&
                      (ext_addr[7:4] >= 4'h5) && (ext_addr[7:4] <= 4'h9);

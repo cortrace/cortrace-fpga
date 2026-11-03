@@ -24,9 +24,10 @@ set_property IOSTANDARD LVCMOS33 [get_ports {trace_data_in[*]}]
 
 # TRACECLK from H743 CURTPM/ETM. 12 ns period covers ~83 MHz with margin.
 create_clock -period 12.000 -name trace_clk_in [get_ports trace_clk_in]
-# BUFIO/BUFR mode: allow the dedicated-route demotion (D17 may not be in the
-# BUFR's clock region for all placements).
-set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets -of_objects [get_pins u_capture/g_bufr.u_bufio_clk/O]]
+# BUFIO/BUFR mode: the dedicated-route demotion of the BUFIO net (D17 may not be
+# in the BUFR's clock region for all placements) is set by the build script
+# (fpga_flow/build_trace_stream.tcl) after synthesis: there is no `if` in XDC,
+# and the MMCM mode has no BUFIO.
 
 # ---- Source-synchronous input timing for the DDR trace capture ----
 # WHY: without set_input_delay on trace_data_in[*] vs trace_clk_in, the IDDR

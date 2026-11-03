@@ -21,6 +21,17 @@
 // (An earlier, different front end saw a fixed tap=24 make 112 MHz worse; that
 // is consistent with the narrow eye at 112 MHz, it is not a general rule.)
 //
+// MMCM mode (CLK_BUF = "MMCM"). Edge-aligned targets (i.MX RT1176: the data
+// changes 1.5..3 ns after each TRACECLK edge) need the sampling point moved by
+// about a quarter of the clock period, far more than the 2.4 ns of IDELAY at
+// the pin clocks above ~40 MHz. In this mode TRACECLK feeds an MMCM whose
+// output (same frequency) clocks the IDDRs and the fabric, and mmcm_phase_ctl
+// shifts that output in 1/56 VCO-period steps at run time (CSR in the top
+// level). The VCO must stay inside 600..1200 MHz, so the pin clock has to be
+// in [600, 1200] / MMCM_MULT MHz (16 -> 37.5..75 MHz). The MMCM output is only
+// valid while it is locked; STA cannot judge the sampling in this mode (the
+// phase is moved at run time), so the build disables the input timing check.
+//
 // Output stream is the same {trace_a, trace_b} pair (rising-edge nibble and
 // falling-edge nibble) that traceIF.v already consumes, plus the packed
 // {trace_b,trace_a} raw byte per TRACECLK period exported through a gray-code
@@ -48,7 +59,14 @@ module trace_capture_a7 #(
     //   "BUFR_IO"  : BUFIO drives the IDDR bit-clock + BUFR drives the fabric
     //                clock. Region-local, tighter source-sync window between
     //                TRACECLK and the IDDR C pins — the shipped choice.
+    //   "MMCM"     : TRACECLK -> MMCM (fine phase shift at run time) -> BUFG.
     parameter CLK_BUF = "BUFG",
+    // MMCM mode only: VCO multiplier (D = 1; the output divider equals it, so
+    // the output has the TRACECLK frequency), TRACECLK period for the MMCM and
+    // the static phase of the output in degrees (the run-time shift adds to it).
+    parameter integer MMCM_MULT      = 16,
+    parameter real    MMCM_CLKIN_NS  = 22.727,
+    parameter real    MMCM_PHASE_DEG = 0.0,
     // Power-on IDELAY tap of every data lane (0..31, 78 ps each). 16 sits in
     // the clean range from 56 to 83 MHz and is the best single value at 90 MHz.
     parameter [4:0] IDLY_INIT = 5'd16
@@ -69,6 +87,17 @@ module trace_capture_a7 #(
     // IDELAY tap per data lane, lane k in [5k+4:5k]. Quasi-static, any clock
     // domain: it is re-synchronised into ref_200m here.
     input  wire [19:0] idly_tap,
+
+    // MMCM mode: fine phase target in VCO/56 steps (signed, any clock domain,
+    // quasi-static), relock request (toggle), and status in the ref_200m domain.
+    // Unused in the other modes (inputs may be left open, outputs read 0).
+    input  wire signed [9:0] phase_tgt,
+    input  wire        relock_tog,
+    output wire        mm_locked,
+    output wire signed [9:0] mm_phase,
+    output wire        mm_busy,
+    output wire [7:0]  mm_lock_lost,
+    output wire        mm_ps_timeout,
 
     // Captured outputs to traceIF
     output wire        trace_clk,
@@ -99,9 +128,55 @@ module trace_capture_a7 #(
             BUFR #(.BUFR_DIVIDE("BYPASS")) u_bufr_clk (
                 .I(trace_clk_ibuf), .O(trace_clk), .CE(1'b1), .CLR(1'b0)
             );
+            assign mm_locked = 1'b0;  assign mm_phase = 10'sd0;
+            assign mm_busy = 1'b0;    assign mm_lock_lost = 8'd0;
+            assign mm_ps_timeout = 1'b0;
+        end else if (CLK_BUF == "MMCM") begin : g_mmcm
+            wire clkfb, clkout0, locked_raw, psdone, mmcm_rst, psen, psincdec;
+            MMCME2_ADV #(
+                .BANDWIDTH           ("OPTIMIZED"),
+                .COMPENSATION        ("INTERNAL"),
+                .CLKIN1_PERIOD       (MMCM_CLKIN_NS),
+                .DIVCLK_DIVIDE       (1),
+                .CLKFBOUT_MULT_F     (MMCM_MULT * 1.0),
+                .CLKOUT0_DIVIDE_F    (MMCM_MULT * 1.0),
+                .CLKOUT0_PHASE       (MMCM_PHASE_DEG),
+                .CLKOUT0_USE_FINE_PS ("TRUE"),
+                .STARTUP_WAIT        ("FALSE")
+            ) u_mmcm (
+                .CLKIN1   (trace_clk_ibuf), .CLKIN2 (1'b0), .CLKINSEL (1'b1),
+                .CLKFBIN  (clkfb),          .CLKFBOUT (clkfb),
+                .CLKOUT0  (clkout0),
+                .PSCLK    (ref_200m), .PSEN (psen), .PSINCDEC (psincdec),
+                .PSDONE   (psdone),
+                .LOCKED   (locked_raw), .RST (mmcm_rst), .PWRDWN (1'b0),
+                .DADDR    (7'd0), .DCLK (1'b0), .DEN (1'b0), .DI (16'd0),
+                .DWE      (1'b0)
+            );
+            BUFG u_bufg_mm (.I(clkout0), .O(trace_clk));
+            assign trace_clk_io = trace_clk;
+            mmcm_phase_ctl u_ps (
+                .clk        (ref_200m),
+                .rst        (rst),
+                .phase_tgt  (phase_tgt),
+                .relock_tog (relock_tog),
+                .mmcm_locked(locked_raw),
+                .psdone     (psdone),
+                .mmcm_rst   (mmcm_rst),
+                .psen       (psen),
+                .psincdec   (psincdec),
+                .locked_o   (mm_locked),
+                .cur        (mm_phase),
+                .busy       (mm_busy),
+                .lock_lost_cnt(mm_lock_lost),
+                .ps_timeout (mm_ps_timeout)
+            );
         end else begin : g_bufg
             BUFG u_bufg_clk (.I(trace_clk_ibuf), .O(trace_clk));
             assign trace_clk_io = trace_clk;
+            assign mm_locked = 1'b0;  assign mm_phase = 10'sd0;
+            assign mm_busy = 1'b0;    assign mm_lock_lost = 8'd0;
+            assign mm_ps_timeout = 1'b0;
         end
     endgenerate
 

@@ -1,0 +1,9 @@
+name: mmcm_phase_ctl
+description: "MMCM fine-phase controller: start-up, +-steps, clamp, lock loss and recovery, timeout reset, relock request"
+sources:
+  - sim/tb/tb_mmcm_phase_ctl.v
+  - rtl/mmcm_phase_ctl.v
+expect:
+  contains: "RESULT=ALL_PASS"
+tags: [capture]
+timeout_s: 60
